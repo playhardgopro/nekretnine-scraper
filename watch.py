@@ -289,17 +289,26 @@ def main():
         return
 
     state = load_state(args.state)
-    total = 0
+    total, failed = 0, []
     for search in cfg["searches"]:
         try:
             total += run_search(search, cfg, state, tg, args.dry_run)
         except Exception as e:
             # Один упавший сайт не должен ронять остальные.
+            failed.append(f"{search['name']}: {type(e).__name__}: {e}")
             log(f"  ОШИБКА в поиске «{search['name']}»: {type(e).__name__}: {e}")
 
     if not args.dry_run:
         save_state(args.state, state)
     log(f"готово, отправлено уведомлений: {total}")
+
+    if failed:
+        # ::error:: поднимает строку на страницу запуска GitHub Actions.
+        # Без этого упавший сайт теряется в логах, workflow остаётся зелёным,
+        # и источник может молчать неделями незамеченным.
+        for f in failed:
+            print(f"::error title=Источник не ответил::{f}", flush=True)
+        log(f"НЕ ОТРАБОТАЛИ ИСТОЧНИКИ: {len(failed)} из {len(cfg['searches'])}")
 
 
 if __name__ == "__main__":
