@@ -1,0 +1,39 @@
+# Общие фильтры — действуют на все поиски. Любой поиск может переопределить
+# отдельные поля своим блоком filters.
+filters:
+  price_min: 700 # EUR/месяц
+  price_max: 1000
+  m2_min: 60
+  m2_max: 120
+  rooms_min: 1.5 # 1.5 = jednoiposoban, 2.0 = dvosoban
+  rooms_max: 4.0
+  furnished: null # yes | no | null (неважно)
+  only_private: false # true — скрыть объявления агентств
+  exclude_keywords: # отсев по тексту, регистр не важен
+    - cimer # сосед по комнате
+    - soba u stanu # комната, а не квартира
+
+# Что мониторим. Список виденного общий для всех поисков: одно и то же
+# объявление на двух сайтах всё равно придёт двумя сообщениями (ID разные),
+# а вот один и тот же поиск дважды не сработает.
+#
+# url — адрес поиска на сайте. Накликай фильтры в их интерфейсе и скопируй
+# адрес из строки браузера. Сортировку дописывать не нужно, скрипт добавит сам.
+searches:
+  - name: novi-sad-4zida
+    source: 4zida
+    url: https://www.4zida.rs/izdavanje-stanova/novi-sad
+    max_pages: 2
+
+  - name: novi-sad-nekretnine
+    source: nekretnine
+    url: https://www.nekretnine.rs/izdavanje-stanova/novi-sad/
+    max_pages: 2
+
+  - name: novi-sad-oglasi
+    source: oglasi
+    url: https://www.oglasi.rs/nekretnine/izdavanje-stanova/novi-sad
+    max_pages: 2
+
+# Максимум сообщений за один проход — страховка от флуда.
+max_notifications_per_run: 15

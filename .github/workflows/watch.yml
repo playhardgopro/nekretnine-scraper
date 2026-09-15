@@ -1,0 +1,50 @@
+name: 4zida watcher
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # каждые 10 минут (UTC)
+  workflow_dispatch:          # и кнопка «Run workflow» для ручного запуска
+
+# Нужно, чтобы воркфлоу мог коммитить обновлённый state.json.
+permissions:
+  contents: write
+
+# Если предыдущий проход ещё идёт — не запускаем второй параллельно,
+# иначе оба увидят одно объявление новым и пришлют два сообщения.
+concurrency:
+  group: 4zida-watcher
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - run: python watch.py
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_TOPIC_ID: ${{ secrets.TELEGRAM_TOPIC_ID }}
+
+      # Коммит появляется только когда нашлись новые объявления,
+      # поэтому история коммитов = история находок.
+      - name: Сохранить состояние
+        run: |
+          git add state.json
+          if git diff --staged --quiet; then
+            echo "новых объявлений не было — коммитить нечего"
+            exit 0
+          fi
+          git -c user.name=4zida-watcher -c user.email=actions@users.noreply.github.com \
+              commit -m "объявления: $(date -u '+%Y-%m-%d %H:%M UTC')"
+          git pull --rebase origin ${{ github.ref_name }}
+          git push origin HEAD:${{ github.ref_name }}
