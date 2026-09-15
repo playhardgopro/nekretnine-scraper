@@ -20,6 +20,23 @@ from sources import SOURCES
 SEEN_LIMIT = 5000  # сколько ID помним; старые забываем, чтобы файл не рос вечно
 
 
+def load_env():
+    """Подхватить .env рядом со скриптом, если он есть.
+
+    Уже заданные переменные не перетираем: в GitHub Actions значения приходят
+    из секретов, и файла .env там нет вовсе.
+    """
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    if not os.path.exists(path):
+        return
+    for line in open(path, encoding="utf-8"):
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
+
 def log(msg):
     print(f"[{dt.datetime.now():%H:%M:%S}] {msg}", flush=True)
 
@@ -249,6 +266,7 @@ def main():
                         "отправки. Состояние не трогает")
     args = p.parse_args()
 
+    load_env()
     cfg = yaml.safe_load(open(args.config, encoding="utf-8"))
 
     unknown = [s["source"] for s in cfg["searches"] if s["source"] not in SOURCES]
@@ -256,11 +274,13 @@ def main():
         sys.exit(f"Неизвестные источники: {', '.join(unknown)}. "
                  f"Доступны: {', '.join(SOURCES)}")
 
+    # При --dry-run в Telegram ничего не уходит, поэтому и токен не нужен.
     missing = [v for v in ("TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID") if not os.getenv(v)]
-    if missing:
-        sys.exit(f"Не заданы переменные окружения: {', '.join(missing)}")
-    tg = {"token": os.environ["TELEGRAM_BOT_TOKEN"],
-          "chat_id": os.environ["TELEGRAM_CHAT_ID"],
+    if missing and not args.dry_run:
+        sys.exit(f"Не заданы переменные окружения: {', '.join(missing)}. "
+                 f"Положи их в .env рядом со скриптом или задай в окружении.")
+    tg = {"token": os.getenv("TELEGRAM_BOT_TOKEN"),
+          "chat_id": os.getenv("TELEGRAM_CHAT_ID"),
           # Необязательный: ID темы в группе-форуме. Без него — в General.
           "topic_id": os.getenv("TELEGRAM_TOPIC_ID") or None}
 
