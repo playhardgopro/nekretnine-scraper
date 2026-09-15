@@ -295,8 +295,11 @@ def main():
             total += run_search(search, cfg, state, tg, args.dry_run)
         except Exception as e:
             # Один упавший сайт не должен ронять остальные.
-            failed.append(f"{search['name']}: {type(e).__name__}: {e}")
             log(f"  ОШИБКА в поиске «{search['name']}»: {type(e).__name__}: {e}")
+            if search.get("optional"):
+                log("  (поиск помечен optional — это ожидаемо, тревоги не поднимаем)")
+            else:
+                failed.append(f"{search['name']}: {type(e).__name__}: {e}")
 
     if not args.dry_run:
         save_state(args.state, state)

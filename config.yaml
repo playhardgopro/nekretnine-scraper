@@ -31,10 +31,15 @@ searches:
     url: https://www.4zida.rs/izdavanje-stanova/novi-sad
     max_pages: 2
 
+  # nekretnine.rs блокирует IP дата-центров (у них DataDome), поэтому
+  # с раннеров GitHub Actions он отдаёт 403, а с домашнего адреса работает.
+  # optional: true — падение этого поиска не поднимает тревогу на CI.
+  # Запускай watch.py локально, чтобы забрать и его объявления.
   - name: novi-sad-nekretnine
     source: nekretnine
     url: https://www.nekretnine.rs/izdavanje-stanova/novi-sad/
     max_pages: 2
+    optional: true
 
   - name: novi-sad-oglasi
     source: oglasi
