@@ -199,8 +199,11 @@ def run_search(search, cfg, state, tg, dry_run):
     return sent
 
 
-def send_samples(cfg, tg):
-    """Проверка связи: по одному подходящему объявлению с каждого источника."""
+def send_samples(cfg, tg, dry_run=False):
+    """Проверка: по одному подходящему объявлению с каждого источника.
+
+    С --dry-run печатает сообщения в консоль вместо отправки в Telegram.
+    """
     for search in cfg["searches"]:
         source = SOURCES[search["source"]]
         filters = {**(cfg.get("filters") or {}), **(search.get("filters") or {})}
@@ -222,8 +225,11 @@ def send_samples(cfg, tg):
                 full = enrich(item) if enrich else item
                 if full is None or not passes_full(full, filters):
                     continue
-                notify(tg, full)
-                log(f"  отправлено: {full.get('price')}€ {full.get('title', '')[:50]}")
+                if dry_run:
+                    print("\n" + describe(full) + f"\n    ссылка: {full['url']}\n")
+                else:
+                    notify(tg, full)
+                    log(f"  отправлено: {full.get('price')}€ {full.get('title', '')[:50]}")
                 break
             else:
                 log(f"  среди {len(items)} объявлений нет подходящих под фильтры")
@@ -238,8 +244,9 @@ def main():
     p.add_argument("--dry-run", action="store_true",
                    help="показать, что было бы отправлено, ничего не записывая")
     p.add_argument("--test", action="store_true",
-                   help="отправить по одному свежему объявлению с каждого сайта "
-                        "для проверки связи; состояние не трогает")
+                   help="по одному подходящему объявлению с каждого сайта; "
+                        "вместе с --dry-run печатает сообщения в консоль вместо "
+                        "отправки. Состояние не трогает")
     args = p.parse_args()
 
     cfg = yaml.safe_load(open(args.config, encoding="utf-8"))
@@ -258,7 +265,7 @@ def main():
           "topic_id": os.getenv("TELEGRAM_TOPIC_ID") or None}
 
     if args.test:
-        send_samples(cfg, tg)
+        send_samples(cfg, tg, args.dry_run)
         return
 
     state = load_state(args.state)
