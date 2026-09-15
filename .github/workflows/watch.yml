@@ -21,6 +21,12 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          # По умолчанию клон поверхностный (fetch-depth: 1). Если между
+          # checkout и push кто-то запушит в main, шаг сохранения упадёт
+          # на rebase. Полная история для репозитория такого размера
+          # ничего не стоит, зато rebase отрабатывает всегда.
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
