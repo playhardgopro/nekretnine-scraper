@@ -130,57 +130,50 @@ def describe(item):
     desc = (item.get("description") or "").strip()
     if desc:
         lines.append(f"\n<i>{e(desc[:400])}</i>")
-    lines.append(f"\n<code>{e(source)}</code>")
-    return "\n".join(lines)
 
-
-def _links(item):
-    """Ссылки текстом: у альбома нет кнопок, туда их не прицепить."""
-    parts = [f'<a href="{item["url"]}">Открыть объявление</a>']
+    # Ссылки текстом, а не кнопками: к альбому Telegram кнопки не даёт,
+    # а шаблон должен выглядеть одинаково при любом числе фотографий.
+    tail = [f'<a href="{e(item["url"])}">Открыть объявление</a>']
     loc = item.get("location") or {}
     if loc.get("latitude"):
-        parts.append(f'<a href="https://maps.google.com/?q={loc["latitude"]},'
-                     f'{loc["longitude"]}">На карте</a>')
-    return " · ".join(parts)
+        tail.append(f'<a href="https://maps.google.com/?q={loc["latitude"]},'
+                    f'{loc["longitude"]}">На карте</a>')
+    tail.append(f"<code>{e(source)}</code>")
+    lines.append("\n🔗 " + " · ".join(tail))
+    return "\n".join(lines)
 
 
 def notify(tg, item, max_photos=6):
     text = describe(item)
-    buttons = [[{"text": "Открыть объявление", "url": item["url"]}]]
-    loc = item.get("location") or {}
-    if loc.get("latitude"):
-        buttons[0].append({"text": "На карте",
-                           "url": f"https://maps.google.com/?q={loc['latitude']},{loc['longitude']}"})
     api = f"https://api.telegram.org/bot{tg['token']}"
 
-    common = {"chat_id": tg["chat_id"]}
+    common = {"chat_id": tg["chat_id"], "parse_mode": "HTML"}
     # В группе с темами без message_thread_id сообщение уходит в General.
     if tg.get("topic_id"):
         common["message_thread_id"] = int(tg["topic_id"])
-    with_markup = {**common, "parse_mode": "HTML",
-                   "reply_markup": {"inline_keyboard": buttons}}
 
     photos = (item.get("images") or [])[:max(2, min(max_photos, 10))]
 
-    # Альбом: от 2 до 10 фото. Кнопки Telegram к нему не даёт, поэтому
-    # ссылки уходят в подпись — она берётся у первого снимка.
+    # Альбом: Telegram принимает от 2 до 10 снимков, подпись берётся у первого.
     if len(photos) >= 2:
         media = [{"type": "photo", "media": u} for u in photos]
-        media[0] |= {"caption": f"{text}\n\n{_links(item)}", "parse_mode": "HTML"}
-        r = httpx.post(f"{api}/sendMediaGroup", timeout=60, json={**common, "media": media})
+        media[0] |= {"caption": text, "parse_mode": "HTML"}
+        r = httpx.post(f"{api}/sendMediaGroup", timeout=60,
+                       json={k: v for k, v in common.items() if k != "parse_mode"}
+                            | {"media": media})
         if r.is_success:
             return
         log(f"  sendMediaGroup не прошёл ({r.text[:120]}), отправляю одним фото")
 
     if photos:
         r = httpx.post(f"{api}/sendPhoto", timeout=30,
-                       json={**with_markup, "photo": photos[0], "caption": text})
+                       json={**common, "photo": photos[0], "caption": text})
         if r.is_success:
             return
         log(f"  sendPhoto не прошёл ({r.text[:120]}), отправляю текстом")
 
     r = httpx.post(f"{api}/sendMessage", timeout=30,
-                   json={**with_markup, "text": text,
+                   json={**common, "text": text,
                          "link_preview_options": {"is_disabled": True}})
     # Не raise_for_status(): httpx кладёт в текст ошибки полный URL, а в нём
     # токен бота — он утёк бы в логи. Тело ответа токена не содержит.
