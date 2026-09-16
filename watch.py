@@ -11,6 +11,7 @@ import html
 import json
 import os
 import sys
+import time
 
 import httpx
 import yaml
@@ -18,6 +19,7 @@ import yaml
 from sources import SOURCES
 
 SEEN_LIMIT = 5000  # сколько ID помним; старые забываем, чтобы файл не рос вечно
+SEND_DELAY = 3.0   # сек между сообщениями: групповой лимит Telegram ~20/мин
 
 
 def load_env():
@@ -143,6 +145,18 @@ def describe(item):
     return "\n".join(lines)
 
 
+def _post(api, method, payload, timeout=30):
+    """POST в Telegram с ожиданием при 429: он сам говорит, сколько ждать."""
+    for attempt in (1, 2, 3):
+        r = httpx.post(f"{api}/{method}", timeout=timeout, json=payload)
+        if r.status_code != 429:
+            return r
+        wait = (r.json().get("parameters") or {}).get("retry_after", 5)
+        log(f"  Telegram просит подождать {wait} с (попытка {attempt}/3)")
+        time.sleep(wait + 1)
+    return r
+
+
 def notify(tg, item, max_photos=6):
     text = describe(item)
     api = f"https://api.telegram.org/bot{tg['token']}"
@@ -158,23 +172,21 @@ def notify(tg, item, max_photos=6):
     if len(photos) >= 2:
         media = [{"type": "photo", "media": u} for u in photos]
         media[0] |= {"caption": text, "parse_mode": "HTML"}
-        r = httpx.post(f"{api}/sendMediaGroup", timeout=60,
-                       json={k: v for k, v in common.items() if k != "parse_mode"}
-                            | {"media": media})
+        r = _post(api, "sendMediaGroup",
+                  {k: v for k, v in common.items() if k != "parse_mode"} | {"media": media},
+                  timeout=60)
         if r.is_success:
             return
         log(f"  sendMediaGroup не прошёл ({r.text[:120]}), отправляю одним фото")
 
     if photos:
-        r = httpx.post(f"{api}/sendPhoto", timeout=30,
-                       json={**common, "photo": photos[0], "caption": text})
+        r = _post(api, "sendPhoto", {**common, "photo": photos[0], "caption": text})
         if r.is_success:
             return
         log(f"  sendPhoto не прошёл ({r.text[:120]}), отправляю текстом")
 
-    r = httpx.post(f"{api}/sendMessage", timeout=30,
-                   json={**common, "text": text,
-                         "link_preview_options": {"is_disabled": True}})
+    r = _post(api, "sendMessage", {**common, "text": text,
+                                   "link_preview_options": {"is_disabled": True}})
     # Не raise_for_status(): httpx кладёт в текст ошибки полный URL, а в нём
     # токен бота — он утёк бы в логи. Тело ответа токена не содержит.
     if not r.is_success:
@@ -230,14 +242,18 @@ def run_search(search, cfg, state, tg, dry_run, catchup=0):
             log(f"  лимит {limit} сообщений исчерпан, остаток уйдёт следующим проходом")
             break
         full = enrich(item) if enrich else item
-        state["seen"].append(item["id"])  # разобрали — больше не возвращаемся
         if full is None or not passes_full(full, filters):
+            state["seen"].append(item["id"])  # разобрали и отвергли
             continue
         log(f"  → {full.get('price')}€ {full.get('m2')}m² {full.get('title', '')[:44]}")
         if dry_run:
             print(f"      {full['url']}")
         else:
             notify(tg, full, cfg.get("photos_per_message", 6))
+            time.sleep(SEND_DELAY)  # групповой лимит Telegram — около 20 сообщений в минуту
+        # Помечаем только после успешной отправки: если Telegram ответил
+        # ошибкой, объявление должно прийти следующим проходом, а не пропасть.
+        state["seen"].append(item["id"])
         sent += 1
     return sent
 
