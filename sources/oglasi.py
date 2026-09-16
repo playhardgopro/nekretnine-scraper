@@ -62,7 +62,7 @@ def fetch(url, page):
             "title": html_mod.unescape(_first(block, r'itemprop="name">([^<]+)<') or "Квартира"),
             "place": html_mod.unescape(places[-1]) if places else "",
             "description": html_mod.unescape(_first(block, r'itemprop="description">([^<]*)<') or ""),
-            "image": _first(block, r'src="(https://media\.oglasi\.rs/[^"]+)"[^>]*itemprop="image"'),
+            "images": [u for u in [_first(block, r'src="(https://media\.oglasi\.rs/[^"]+)"[^>]*itemprop="image"')] if u],
             "agency": None,
             "is_agency": None,    # сайт не показывает продавца в выдаче — именно
                                   # неизвестно, а не «частник»
@@ -72,3 +72,15 @@ def fetch(url, page):
             "location": {},
         })
     return out
+
+
+def enrich(item):
+    """Догрузить остальные фото: в выдаче отдаётся только одно, на странице их до десятка."""
+    try:
+        html = http.get(item["url"]).text
+    except Exception as e:
+        print(f"    фото не догрузились ({type(e).__name__}), остаётся одно", flush=True)
+        return item
+    # Каждое фото лежит в четырёх размерах; large — крупнейший из разумных.
+    urls = dict.fromkeys(re.findall(r'data-large="(https://media\.oglasi\.rs/[^"]+)"', html))
+    return {**item, "images": list(urls) or item["images"]}

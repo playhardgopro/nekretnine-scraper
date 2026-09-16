@@ -16,7 +16,7 @@
   title       заголовок
   place       район/город
   description текст объявления
-  image       ссылка на фото или None
+  images      список ссылок на фото (может быть пустым)
   agency      название агентства, если известно, иначе None
   is_agency   True — агентство, False — частник, None — сайт не говорит
   furnished   "yes" / "no" / None

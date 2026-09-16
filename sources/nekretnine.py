@@ -42,10 +42,10 @@ def fetch(url, page):
         loc = prop.get("location") or {}
         agency = (estate.get("advertiser") or {}).get("agency") or {}
 
+        # xxs-c — это превью 8 КБ, m-c уже нормальная картинка
         photos = (prop.get("multimedia") or {}).get("photos") or []
-        image = photos[0].get("urls", {}).get("small") if photos else None
-        if image:  # xxs-c — это превью 8 КБ, m-c уже нормальная картинка
-            image = image.replace("/xxs-c.", "/m-c.")
+        images = [u.replace("/xxs-c.", "/m-c.")
+                  for ph in photos if (u := ph.get("urls", {}).get("small"))]
 
         floor = prop.get("floor") or {}
         extra = [f"{floor['abbreviation']} эт."] if floor.get("abbreviation") else []
@@ -60,7 +60,7 @@ def fetch(url, page):
             "title": estate.get("title") or prop.get("caption") or "Квартира",
             "place": ", ".join(x for x in (loc.get("city"), loc.get("macrozone")) if x),
             "description": prop.get("description") or "",
-            "image": image,
+            "images": images,
             "agency": agency.get("displayName") or None,
             "is_agency": bool(agency),
             "furnished": None,        # сайт не отдаёт это отдельным полем

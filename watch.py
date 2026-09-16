@@ -134,7 +134,17 @@ def describe(item):
     return "\n".join(lines)
 
 
-def notify(tg, item):
+def _links(item):
+    """Ссылки текстом: у альбома нет кнопок, туда их не прицепить."""
+    parts = [f'<a href="{item["url"]}">Открыть объявление</a>']
+    loc = item.get("location") or {}
+    if loc.get("latitude"):
+        parts.append(f'<a href="https://maps.google.com/?q={loc["latitude"]},'
+                     f'{loc["longitude"]}">На карте</a>')
+    return " · ".join(parts)
+
+
+def notify(tg, item, max_photos=6):
     text = describe(item)
     buttons = [[{"text": "Открыть объявление", "url": item["url"]}]]
     loc = item.get("location") or {}
@@ -143,21 +153,34 @@ def notify(tg, item):
                            "url": f"https://maps.google.com/?q={loc['latitude']},{loc['longitude']}"})
     api = f"https://api.telegram.org/bot{tg['token']}"
 
-    common = {"chat_id": tg["chat_id"], "parse_mode": "HTML",
-              "reply_markup": {"inline_keyboard": buttons}}
+    common = {"chat_id": tg["chat_id"]}
     # В группе с темами без message_thread_id сообщение уходит в General.
     if tg.get("topic_id"):
         common["message_thread_id"] = int(tg["topic_id"])
+    with_markup = {**common, "parse_mode": "HTML",
+                   "reply_markup": {"inline_keyboard": buttons}}
 
-    if item.get("image"):
+    photos = (item.get("images") or [])[:max(2, min(max_photos, 10))]
+
+    # Альбом: от 2 до 10 фото. Кнопки Telegram к нему не даёт, поэтому
+    # ссылки уходят в подпись — она берётся у первого снимка.
+    if len(photos) >= 2:
+        media = [{"type": "photo", "media": u} for u in photos]
+        media[0] |= {"caption": f"{text}\n\n{_links(item)}", "parse_mode": "HTML"}
+        r = httpx.post(f"{api}/sendMediaGroup", timeout=60, json={**common, "media": media})
+        if r.is_success:
+            return
+        log(f"  sendMediaGroup не прошёл ({r.text[:120]}), отправляю одним фото")
+
+    if photos:
         r = httpx.post(f"{api}/sendPhoto", timeout=30,
-                       json={**common, "photo": item["image"], "caption": text})
+                       json={**with_markup, "photo": photos[0], "caption": text})
         if r.is_success:
             return
         log(f"  sendPhoto не прошёл ({r.text[:120]}), отправляю текстом")
 
     r = httpx.post(f"{api}/sendMessage", timeout=30,
-                   json={**common, "text": text,
+                   json={**with_markup, "text": text,
                          "link_preview_options": {"is_disabled": True}})
     # Не raise_for_status(): httpx кладёт в текст ошибки полный URL, а в нём
     # токен бота — он утёк бы в логи. Тело ответа токена не содержит.
@@ -221,7 +244,7 @@ def run_search(search, cfg, state, tg, dry_run, catchup=0):
         if dry_run:
             print(f"      {full['url']}")
         else:
-            notify(tg, full)
+            notify(tg, full, cfg.get("photos_per_message", 6))
         sent += 1
     return sent
 
@@ -255,7 +278,7 @@ def send_samples(cfg, tg, dry_run=False):
                 if dry_run:
                     print("\n" + describe(full) + f"\n    ссылка: {full['url']}\n")
                 else:
-                    notify(tg, full)
+                    notify(tg, full, cfg.get("photos_per_message", 6))
                     log(f"  отправлено: {full.get('price')}€ {full.get('title', '')[:50]}")
                 break
             else:

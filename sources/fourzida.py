@@ -53,7 +53,8 @@ def enrich(item):
             "title": ad.get("structureName") or "Квартира",
             "place": ", ".join(p["title"] for p in (ad.get("placeMetaData") or [])[:2]),
             "description": ad.get("humanReadableDescription") or "",
-            "image": images[0].get("adDetails", {}).get("730x396_fill_0_jpeg") if images else None,
+            "images": [u for i in images
+                       if (u := i.get("adDetails", {}).get("730x396_fill_0_jpeg"))],
             "agency": agency.get("title") or agency.get("name") or None,
             "is_agency": bool(agency),
             "furnished": ad.get("furnished"),
