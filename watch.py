@@ -167,14 +167,15 @@ def notify(tg, item):
 
 # --- основной проход -------------------------------------------------------
 
-def run_search(search, cfg, state, tg, dry_run):
+def run_search(search, cfg, state, tg, dry_run, catchup=0):
     name = search["name"]
     source = SOURCES[search["source"]]
     filters = {**(cfg.get("filters") or {}), **(search.get("filters") or {})}
     log(f"поиск «{name}» ({search['source']})")
 
     items = []
-    for page in range(1, search.get("max_pages", 1) + 1):
+    pages = catchup or search.get("max_pages", 1)
+    for page in range(1, pages + 1):
         page_items = source.fetch(search["url"], page)
         if not page_items:
             break
@@ -186,6 +187,11 @@ def run_search(search, cfg, state, tg, dry_run):
     log(f"  получено {len(items)}, подходят по цене/площади: {len(matching)}")
 
     seen = set(state["seen"])
+
+    # В режиме --catchup молчаливая инициализация не нужна: мы как раз и хотим
+    # увидеть всё, что уже висит на сайте.
+    if catchup and name not in state["bootstrapped"]:
+        state["bootstrapped"].append(name)
 
     # Первый запуск: запоминаем текущую выдачу молча, иначе прилетит десяток
     # сообщений о квартирах, которые висят на сайте неделю.
@@ -200,7 +206,9 @@ def run_search(search, cfg, state, tg, dry_run):
 
     enrich = getattr(source, "enrich", None)
     sent = 0
-    limit = cfg.get("max_notifications_per_run", 15)
+    # В dry-run ничего не отправляется, поэтому защита от флуда не нужна:
+    # при разборе накопившегося важно увидеть список целиком.
+    limit = float("inf") if dry_run else cfg.get("max_notifications_per_run", 15)
     for item in fresh:
         if sent >= limit:
             log(f"  лимит {limit} сообщений исчерпан, остаток уйдёт следующим проходом")
@@ -209,8 +217,10 @@ def run_search(search, cfg, state, tg, dry_run):
         state["seen"].append(item["id"])  # разобрали — больше не возвращаемся
         if full is None or not passes_full(full, filters):
             continue
-        log(f"  → {full.get('price')}€ {full.get('title', '')[:50]}")
-        if not dry_run:
+        log(f"  → {full.get('price')}€ {full.get('m2')}m² {full.get('title', '')[:44]}")
+        if dry_run:
+            print(f"      {full['url']}")
+        else:
             notify(tg, full)
         sent += 1
     return sent
@@ -260,6 +270,11 @@ def main():
     p.add_argument("--state", default="state.json")
     p.add_argument("--dry-run", action="store_true",
                    help="показать, что было бы отправлено, ничего не записывая")
+    p.add_argument("--catchup", type=int, metavar="СТРАНИЦ", default=0,
+                   help="разобрать накопившееся: пролистать столько страниц "
+                        "вместо max_pages и показать всё подходящее, что ещё "
+                        "не показывали. Лимит сообщений за проход действует, "
+                        "так что запускать можно несколько раз подряд")
     p.add_argument("--test", action="store_true",
                    help="по одному подходящему объявлению с каждого сайта; "
                         "вместе с --dry-run печатает сообщения в консоль вместо "
@@ -292,7 +307,7 @@ def main():
     total, failed = 0, []
     for search in cfg["searches"]:
         try:
-            total += run_search(search, cfg, state, tg, args.dry_run)
+            total += run_search(search, cfg, state, tg, args.dry_run, args.catchup)
         except Exception as e:
             # Один упавший сайт не должен ронять остальные.
             log(f"  ОШИБКА в поиске «{search['name']}»: {type(e).__name__}: {e}")
