@@ -3,7 +3,8 @@
   "novi-sad-4zida",
   "novi-sad-oglasi",
   "petrovaradin-oglasi",
-  "sremska-kamenica-oglasi"
+  "sremska-kamenica-oglasi",
+  "novi-sad-nekretnine"
  ],
  "seen": [
   "4zida:6aa94b93e002b795650dccfc",
@@ -89,6 +90,15 @@
   "oglasi:03-3926414",
   "oglasi:03-2214484",
   "4zida:6aaac01ebb4e2a9c32045ddc",
-  "4zida:6aaaf83f2a5e2f39040029dc"
+  "4zida:6aaaf83f2a5e2f39040029dc",
+  "nekretnine:1513349",
+  "nekretnine:1513343",
+  "nekretnine:1513337",
+  "nekretnine:1513353",
+  "nekretnine:1513351",
+  "nekretnine:1513609",
+  "nekretnine:1509481",
+  "nekretnine:1509477",
+  "nekretnine:1509607"
  ]
 }
